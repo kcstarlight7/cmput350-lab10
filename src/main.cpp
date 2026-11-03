@@ -154,9 +154,6 @@ int main() {
         previousC = c;
         previousFrameLocation = camCenterWorld;
         previousFrameScale = worldUnitsPerPixel;
-        previous.clear();
-        previous.draw(fullscreenTriangle, &shader);
-        previous.display();
         shader.setUniform("previousRender", previous.getTexture());
     }
     return 0;
