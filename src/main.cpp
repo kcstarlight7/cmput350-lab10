@@ -5,7 +5,7 @@
 #include <SFML/Graphics.hpp>
 #include <SFML/OpenGL.hpp>
 
-constexpr int TRUE_MAX_ITERS = 16384;
+constexpr int TRUE_MAX_ITERS = 4096;
 constexpr int INIT_ITERS = 64;
 
 int main() {
@@ -21,8 +21,8 @@ int main() {
     //      newer), only Core profile is supported, i.e., REMOVING legacy fixed-function features.
     // As a result, if you want to both support macOS AND use SFML's Graphics features (e.g.,
     // sf::RenderWindow), you can use at latest OpenGL 2.1, which is a nightmare.
-    settings.majorVersion = 2;
-    settings.minorVersion = 1;
+    //settings.majorVersion = 2;
+    //settings.minorVersion = 1;
     sf::RenderWindow window(sf::VideoMode({1280, 720}), "Shaders", sf::State::Windowed, settings);
     // Query the settings we actually received (may be different):
     const auto& actualSettings = window.getSettings();
@@ -39,6 +39,8 @@ int main() {
     // load vertex and fragment shaders:
     sf::Shader shader(std::filesystem::path{"main.vert"}, std::filesystem::path{"main.frag"});
     // ... other shaders can go here...
+    sf::Shader copy;
+    copy.loadFromFile("copy.frag", sf::Shader::Type::Fragment);
 
     sf::Font openSansFont(EmbeddedFonts::OpenSans_SemiBold_ttf,
                           EmbeddedFonts::OpenSans_SemiBold_ttf_len);
@@ -53,10 +55,13 @@ int main() {
     cTextShadow.setOutlineColor(sf::Color(0, 0, 0, 130));
     cTextShadow.setOutlineThickness(3);
     sf::Vector2f c{-0.039, 0.68};
+    sf::Vector2f previousC = c;
     float worldUnitsPerPixel = 1.f / window.getSize().y;
     sf::Vector2f camCenterWorld{0.f, 0.f};
     int maxIters = INIT_ITERS;
-
+    sf::Vector2f previousFrameLocation = camCenterWorld;
+    float previousFrameScale = worldUnitsPerPixel;
+    sf::RenderTexture previous(window.getSize());
     int i = -1;
     while (window.isOpen()) {
         ++i;
@@ -72,6 +77,7 @@ int main() {
                     return 0;
                 }
             } else if (const auto* scrolled = e->getIf<sf::Event::MouseWheelScrolled>()) {
+                previousFrameScale = worldUnitsPerPixel;
                 worldUnitsPerPixel *= std::pow(1.01, scrolled->delta);
                 moved = true;
             }
@@ -114,9 +120,29 @@ int main() {
             maxIters = std::min(maxIters * 2, TRUE_MAX_ITERS);
         }
         // TODO set shader uniforms here...
+        
 
+        shader.setUniform("c", c);
+        shader.setUniform("MAX_ITERS", maxIters);
+        shader.setUniform("TRUE_MAX_ITERS", TRUE_MAX_ITERS);
+        shader.setUniform("windowSizePixels", (sf::Vector2f)window.getSize());
+        shader.setUniform("camCenterWorld", camCenterWorld);
+        shader.setUniform("camWorldUnitsPerPixel", worldUnitsPerPixel);
+        shader.setUniform("previousFrameLocation", previousFrameLocation);
+        shader.setUniform("previousFrameScale", previousFrameScale);
+        shader.setUniform("previousC", previousC);
+
+        previous.clear();
+        previous.draw(fullscreenTriangle, &shader);
+        previous.display();
+        copy.setUniform("toCopy", previous.getTexture());
+        
+        sf::Sprite sprite(previous.getTexture());
+        sprite.move({-1, -1});
         window.clear(sf::Color::Black);
-        // TODO something.draw(fullscreenTriangle, &shader);
+        //window.draw(fullscreenTriangle, &shader);
+        window.draw(sprite, &copy);
+
         // this might change as you finish more parts!
         cText.setString("c = (" + std::to_string(c.x) + ", " + std::to_string(c.y) + ")");
         cTextShadow.setString("c = (" + std::to_string(c.x) + ", " + std::to_string(c.y) + ")");
@@ -125,6 +151,13 @@ int main() {
         window.display();
 
         // TODO (reprojection)... update "old" states
+        previousC = c;
+        previousFrameLocation = camCenterWorld;
+        previousFrameScale = worldUnitsPerPixel;
+        previous.clear();
+        previous.draw(fullscreenTriangle, &shader);
+        previous.display();
+        shader.setUniform("previousRender", previous.getTexture());
     }
     return 0;
 }
